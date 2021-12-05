@@ -1,0 +1,6 @@
+cd BTS
+sqlite3 test.db
+.database
+.tables
+.schema LIVES //.fullschema
+pragma table_info('LIVES')
