@@ -4,3 +4,11 @@ sqlite3 test.db
 .tables
 .schema LIVES //.fullschema
 pragma table_info('LIVES')
+
+sqlite3 final.db < final.sql
+sqlite3 final.db .dump > final.sql
+
+flask run
+sudo mysql 
+>USE BTS;
+

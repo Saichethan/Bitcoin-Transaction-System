@@ -7,7 +7,7 @@ from flask_session import Session
 from tempfile import mkdtemp
 from werkzeug.exceptions import default_exceptions, HTTPException, InternalServerError
 from werkzeug.security import check_password_hash, generate_password_hash
-
+from flask_sqlalchemy import SQLAlchemy
 from helpers import apology, login_required, usd
 
 # Configure application
@@ -26,15 +26,12 @@ def after_request(response):
 
 # Configure session to use filesystem (instead of signed cookies)
 app.config["SESSION_FILE_DIR"] = mkdtemp()
-app.config["SESSION_PERMANENT"] = True
-app.config["SESSION_TYPE"] = "redis"
-app.secret_key =  'AOZr96j/3yX R~XHH!jmN]KWX/,?gT' #os.urandom(24)
-app.config['SECRET_KEY'] = 'AOZr96j/3yX R~XHH!jmN]KWX/,?gT' #os.urandom(32)
-#app.secret_key = 'AOZr96j/3yX R~XHH!jmN]KWX/,?gT'
+app.config["SESSION_PERMANENT"] = False
+app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
 # Configure CS50 Library to use SQLite database
-db = SQL("sqlite:///test.db")
+db = SQL("sqlite:///final.db")
 
 
 
@@ -96,7 +93,7 @@ def buy():
             commission_type = request.form["commission"]
             quote = requests.get('https://cloud.iexapis.com/stable/crypto/btcusd/quote?token=pk_95e64a4d35634188936141168c726d64')
      
-            # if invalid ticker
+
             name = "BITCOIN"
             user = session["user_id"]
             role = session["role"]
@@ -106,13 +103,16 @@ def buy():
             current_cash = current_cash[0]['fiat_money']
         
             # Gold or Silver customer
-            chk1 = db.execute("SELECT strftime('%m',time) AS month, SUM(coin*price) FROM TRANSACTIONX WHERE client_id=(?)and coin>0 and status>0 GROUP BY month", client)
-            chk2 = db.execute("SELECT strftime('%m',time) AS month, SUM(coin*price) FROM TRANSACTIONX WHERE client_id=(?) and coin<0 and status>0 GROUP BY month", client)
+            
+            chk1 = db.execute("SELECT strftime('%m',time) AS month, strftime('%m%Y',time) AS my, SUM(coin*price) FROM TRANSACTIONX WHERE client_id=(?)and coin>0 and status>0 GROUP BY my", client)
+            chk2 = db.execute("SELECT strftime('%m',time) AS month, strftime('%m%Y',time) AS my, SUM(coin*price) FROM TRANSACTIONX WHERE client_id=(?) and coin<0 and status>0 GROUP BY my", client)
+            
+            flash(chk1)            
             curt = db.execute("SELECT strftime('%m',datetime('now','localtime')) as now")
             curt = curt[0]["now"]
             ttt = 0
             for item in chk1+chk2:
-                if int(item['month'])+1 == int(curt):
+                if (int(item['month'])+1)%12 == (int(curt))%12:
                     ttt = ttt+abs(chk2[0]['SUM(coin*price)'])
             
             
@@ -159,7 +159,7 @@ def buy():
                     db.execute("UPDATE CLIENT SET bitcoins = bitcoins + (?) WHERE client_id = (?)", coins, client)
                     flash("Bought!", "primary")
                     return redirect("/")
-                # if stock already in portfolio, add to it
+                # if bitcoin already in portfolio, add to it
                 else:
                     db.execute("UPDATE CLIENT SET bitcoins = bitcoins + (?) WHERE client_id = (?)", coins, client)
                     flash("Bought!", "primary")
@@ -172,7 +172,7 @@ def buy():
 
 
 
-
+#load money to self wallet
 @app.route("/load", methods=["GET", "POST"])
 @login_required
 def load():
@@ -195,6 +195,7 @@ def load():
             else:
                 return render_template("load.html")
         
+#History of approved Transactions        
 @app.route("/history")
 @login_required
 def history():
@@ -217,25 +218,76 @@ def history():
         #history = db.execute("SELECT client_id, trader_id, price, coin, commission, commission_type, status, time FROM TRANSACTIONX")
         return render_template("admin_history.html", Buy=Buy,Sell=Sell)
         
+#Insights for manager        
 @app.route("/insights")
 @login_required
 def insight():
     user = session["user_id"]
     role = session["role"]
-    
-    if role == "manager":
-        dailyBuy = db.execute("SELECT strftime('%d',time) AS day, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY day")
-        dailySell = db.execute("SELECT strftime('%d',time) AS day, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY day")
+
+    if session["role"] == "manager":
+        dailyBuy = db.execute("SELECT strftime('%d',time) AS day, strftime('%m',time) AS m, strftime('%Y',time) AS y, strftime('%d%m%Y',time) AS dmy, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY dmy")
+        dailySell = db.execute("SELECT strftime('%d',time) AS day, strftime('%m',time) AS m, strftime('%Y',time) AS y, strftime('%d%m%Y',time) AS dmy, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY dmy")
 
 
-        weeklyBuy = db.execute("SELECT strftime('%W',time) AS week, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY week")
-        weeklySell = db.execute("SELECT strftime('%W',time) AS week, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY week")
+        weeklyBuy = db.execute("SELECT strftime('%W',time) AS week, strftime('%W%Y',time) AS wy, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY wy")
+        weeklySell = db.execute("SELECT strftime('%W',time) AS week, strftime('%W%Y',time) AS wy, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY wy")
 
-        monthlyBuy = db.execute("SELECT strftime('%m',time) AS month, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY month")
-        monthlySell = db.execute("SELECT strftime('%m',time) AS month, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY month")
+        monthlyBuy = db.execute("SELECT strftime('%m',time) AS month, strftime('%m%Y',time) AS my, strftime('%Y',time) AS y, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY my")
+        monthlySell = db.execute("SELECT strftime('%m',time) AS month, strftime('%m%Y',time) AS my, strftime('%Y',time) AS y, SUM(coin), SUM(commission) FROM TRANSACTIONX WHERE coin>0 and status>0 GROUP BY my")
+        
         
         return render_template("insights.html",dailyBuy=dailyBuy,dailySell=dailySell,  weeklyBuy=weeklyBuy,weeklySell=weeklySell,monthlyBuy=monthlyBuy,monthlySell=monthlySell)
+
+
+#Custom Daily/Weekly/Monthly Insights
+@app.route("/custom", methods=["GET", "POST"])
+@login_required
+def custom():
+    user = session["user_id"]
+    role = session["role"]
+
+    if request.method == "GET" and session["role"] == "manager":
+    
+        dayList = ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31']
+        monthList = ['01','02','03','04','05','06','07','08','09','10','11',
+        '12']
+        yearList = ['2020','2021','2022','2023','2024','2025']
+        return render_template("custom.html", dayList=dayList, monthList=monthList,yearList=yearList)
         
+    else:
+        df = request.form.get("Df")
+        mf = request.form.get("Mf")
+        yf = request.form.get("YYf")
+
+        fdate = yf+"-"+mf+"-"+df
+        
+        dt = request.form.get("Dt")
+        mt = request.form.get("Mt")
+        yt = request.form.get("YYt")
+
+        tdate = yt+"-"+mt+"-"+dt
+        
+        dBuy = db.execute("SELECT strftime('%d',time) AS day, strftime('%m',time) AS m, strftime('%Y',time) AS y, strftime('%d%m%Y',time) AS dmy, SUM(coin), SUM(commission), DATE(time) AS chk FROM TRANSACTIONX GROUP BY dmy")
+        
+        
+        dailyBuy = db.execute("SELECT strftime('%d',time) AS day, strftime('%m',time) AS m, strftime('%Y',time) AS y, strftime('%d%m%Y',time) AS dmy, SUM(coin), SUM(commission), DATE(time) AS chk FROM TRANSACTIONX WHERE chk>=(?) and chk<=(?) and coin>0 and status>0 GROUP BY dmy",fdate,tdate)
+        dailySell = db.execute("SELECT strftime('%d',time) AS day, strftime('%m',time) AS m, strftime('%Y',time) AS y, strftime('%d%m%Y',time) AS dmy, SUM(coin), SUM(commission), DATE(time) AS chk FROM TRANSACTIONX WHERE chk>=(?) and chk<=(?) and coin>0 and status>0 GROUP BY dmy",fdate,tdate)
+        
+        
+        
+        weeklyBuy = db.execute("SELECT strftime('%W',time) AS week, strftime('%W%Y',time) AS wy, SUM(coin), SUM(commission), DATE(time) AS chk FROM TRANSACTIONX WHERE chk>=(?) and chk<=(?) and coin>0 and status>0 GROUP BY wy",fdate,tdate)
+        weeklySell = db.execute("SELECT strftime('%W',time) AS week, strftime('%W%Y',time) AS wy, SUM(coin), SUM(commission), DATE(time) AS chk FROM TRANSACTIONX WHERE chk>=(?) and chk<=(?) and coin>0 and status>0 GROUP BY wy",fdate,tdate)
+
+        monthlyBuy = db.execute("SELECT strftime('%m',time) AS month, strftime('%m%Y',time) AS my, strftime('%Y',time) AS y, SUM(coin), SUM(commission), DATE(time) AS chk FROM TRANSACTIONX WHERE chk>=(?) and chk<=(?) and coin>0 and status>0 GROUP BY my",fdate,tdate)
+        monthlySell = db.execute("SELECT strftime('%m',time) AS month, strftime('%m%Y',time) AS my, strftime('%Y',time) AS y, SUM(coin), SUM(commission), DATE(time) AS chk FROM TRANSACTIONX WHERE chk>=(?) and chk<=(?) and coin>0 and status>0 GROUP BY my",fdate,tdate)
+        
+        if len(dailyBuy) <1:
+            return redirect("/custom")
+        else:
+            return render_template("cresult.html",dailyBuy=dailyBuy, dailySell=dailySell,  weeklyBuy=weeklyBuy, weeklySell=weeklySell, monthlyBuy=monthlyBuy, monthlySell=monthlySell)
+   
+#Cancelled Transactions   
 @app.route("/failed")
 @login_required
 def failed():
@@ -247,7 +299,7 @@ def failed():
         failed = db.execute("SELECT client_id, price, coin, commission, commission_type, status, time FROM TRANSACTIONX WHERE client_id = (?) and status =-1", client)
         return render_template("client_failed.html", failed=failed)
 
-
+#Send money to traders
 @app.route("/sendmoney" , methods=["GET", "POST"])
 @login_required
 def sendmoney():
@@ -273,11 +325,11 @@ def sendmoney():
                 traderList = db.execute("SELECT trader_id FROM TRADER")
                 return redirect("/sendmoney")
 
-
+#Request trader for transaction 
 @app.route("/asktrade", methods=["GET", "POST"])
 @login_required
 def asktrade():
-    """Update address"""
+
     if request.method == "GET" and session["role"] == "client":
         traderList = db.execute("SELECT trader_id FROM TRADER")
         return render_template("asktrade.html", traderList=traderList)
@@ -293,11 +345,11 @@ def asktrade():
 
             return redirect("/asktrade")
 
-
+#Trader dashboard
 @app.route("/reqs", methods=["GET", "POST"])
 @login_required
 def reqs():
-    """Update address"""
+
     if request.method == "GET" and session["role"] == "trader":
         trader = 't'+str(session["user_id"])
         reqList = db.execute("SELECT client_id, coin FROM ASK_FOR_TRADE WHERE trader_id = (?) and status=(?)", trader, -1)
@@ -388,11 +440,11 @@ def reqs():
 
 
 
-
+#Trader money requests from clients
 @app.route("/moneyreq", methods=["GET", "POST"])
 @login_required
 def moneyreq():
-    """Update address"""
+
     if request.method == "GET" and session["role"] == "trader":
         trader = 't'+str(session["user_id"])
         reqList = db.execute("SELECT client_id, amount FROM TRANSFER_CASH_TO_TRADER WHERE trader_id = (?) and status=(?)", trader,-1)
@@ -432,7 +484,7 @@ def moneyreq():
                     newList.append(reqList[i])
             return render_template("itrademoney.html", reqList=newList)
 
-
+#Cancelled/Declined transactions by trader 
 @app.route("/logs")
 @login_required
 def logs():
@@ -444,10 +496,11 @@ def logs():
         logs = db.execute("SELECT client_id, price, coin, commission, commission_type, status, time FROM TRANSACTIONX WHERE trader_id = (?) and status =-1", trader)
         return render_template("logs.html", logs=logs)
 
+#Declined money by trader
 @app.route("/moneylogs")
 @login_required
 def moneylogs():
-    """Show history of failed/cancelled transactions"""
+    """Show history of failed/cancelled money"""
     user = session["user_id"]
     role = session["role"]
     if role == "trader":
@@ -456,7 +509,7 @@ def moneylogs():
         return render_template("moneylogs.html", logs=logs)
 
 
-
+#Trader Approved transactions
 @app.route("/trader_history")
 @login_required
 def trader_history():
@@ -468,7 +521,7 @@ def trader_history():
         history = db.execute("SELECT client_id, price, coin, commission, commission_type, status, time FROM TRANSACTIONX WHERE trader_id = (?) and status=1", trader)
         return render_template("trader_history.html", history=history)
 
-
+#Search feature for trader
 @app.route("/search" , methods=["GET", "POST"])
 @login_required
 def search():
@@ -491,7 +544,7 @@ def search():
             
             
 
-
+#Admin/Manager View
 @app.route("/admin_history")
 @login_required
 def admin_history():
@@ -503,7 +556,7 @@ def admin_history():
         history = db.execute("SELECT client_id, price, coin, commission, commission_type, status, time FROM TRANSACTIONX WHERE status=1")
         return render_template("admin_history.html", history=history)
 
-
+#Login Page
 @app.route("/login", methods=["GET", "POST"])
 def login():
     """Log user in"""
@@ -542,7 +595,7 @@ def login():
     else:
         return render_template("login.html")
 
-
+#Logout Page
 @app.route("/logout")
 def logout():
     """Log user out"""
@@ -553,7 +606,7 @@ def logout():
     # Redirect user to login form
     return redirect("/")
 
-
+#Registration Page
 @app.route("/register", methods=["GET", "POST"])
 def register():
     """Register user"""
@@ -596,7 +649,7 @@ def register():
             flash("Username already exists.", "danger")
             return render_template("register.html")
 
-
+#Get quote of 1 BTC in real time
 @app.route("/quote", methods=["GET", "POST"])
 @login_required
 def quote():
@@ -612,7 +665,7 @@ def quote():
             flash("API down", "danger")
             return render_template("cquote.html")
 
-
+#Address
 @app.route("/address", methods=["GET", "POST"])
 @login_required
 def address():
@@ -626,7 +679,8 @@ def address():
         city = request.form.get("city")
         state = request.form.get("state")
         zipcode = request.form.get("zipcode")
-        
+        #session["city"] = city
+        #session["zipcode"] = zipcode
         already = db.execute("SELECT user_id FROM LIVES WHERE user_id = (?)", user) 
         
         if len(already)==0:   
@@ -639,7 +693,7 @@ def address():
 
         return redirect("/")
 
-
+#Selling BTC
 @app.route("/sell", methods=["GET", "POST"])
 @login_required
 def sell():
@@ -673,7 +727,7 @@ def sell():
             curt = curt[0]["now"]
             ttt = 0
             for item in chk1+chk2:
-                if int(item['month'])+1 == int(curt):
+                if (int(item['month'])+1)%12 == (int(curt))%12:
                     ttt = ttt+abs(chk2[0]['SUM(coin*price)'])
             
             if ttt >= float(100000):
@@ -754,7 +808,7 @@ def sell():
 
 
 
-
+#To handle Errors
 def errorhandler(e):
     """Handle error"""
     if not isinstance(e, HTTPException):
