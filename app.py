@@ -107,7 +107,7 @@ def buy():
             chk1 = db.execute("SELECT strftime('%m',time) AS month, strftime('%m%Y',time) AS my, SUM(coin*price) FROM TRANSACTIONX WHERE client_id=(?)and coin>0 and status>0 GROUP BY my", client)
             chk2 = db.execute("SELECT strftime('%m',time) AS month, strftime('%m%Y',time) AS my, SUM(coin*price) FROM TRANSACTIONX WHERE client_id=(?) and coin<0 and status>0 GROUP BY my", client)
             
-            flash(chk1)            
+            #flash(chk1)            
             curt = db.execute("SELECT strftime('%m',datetime('now','localtime')) as now")
             curt = curt[0]["now"]
             ttt = 0
